@@ -41,14 +41,14 @@ where
     {
         match method_result {
             Ok(ret) => {
-                ResponseResult::Result(serde_json::to_value(&ret)) 
+                ResponseResult::Result(serde_json::to_value(&ret).unwrap()) 
             } 
             Err(error) => {
                 let code : u32 = error.code;
                 let request_error = RequestError { 
                     code : code as i64, // Safe convertion. TODO: use TryFrom when it's stable
                     message : error.message,
-                    data : Some(serde_json::to_value(&error.data)),
+                    data : Some(serde_json::to_value(&error.data).unwrap()),
                 };
                 ResponseResult::Error(request_error)
             }
@@ -78,10 +78,10 @@ impl<RET, RET_ERROR> RequestResult<RET, RET_ERROR> {
     }
 }
 
-impl<
-    RET : serde::Deserialize, 
-    RET_ERROR : serde::Deserialize, 
-> From<ResponseResult> for RequestResult<RET, RET_ERROR> 
+impl<RET, RET_ERROR> From<ResponseResult> for RequestResult<RET, RET_ERROR> 
+where
+    for<'de> RET : serde::Deserialize<'de>, 
+    for<'de> RET_ERROR : serde::Deserialize<'de>, 
 {
     fn from(response_result : ResponseResult) -> Self 
     {
@@ -118,18 +118,18 @@ impl<
         
         // Test Ok
         let params = new_sample_params(10, 20);
-        let response_result = ResponseResult::Result(serde_json::to_value(&params));
+        let response_result = ResponseResult::Result(serde_json::to_value(&params).unwrap());
         assert_eq!(
             RequestResult::<Point, ()>::from(response_result), 
             RequestResult::MethodResult(Ok(params.clone()))
         );
         
         // Test invalid MethodResult response 
-        let response_result = ResponseResult::Result(serde_json::to_value(&new_sample_params(10, 20)));
+        let response_result = ResponseResult::Result(serde_json::to_value(&new_sample_params(10, 20)).unwrap());
         assert_eq!(
             RequestResult::<String, ()>::from(response_result), 
             RequestResult::RequestError(error_JSON_RPC_InvalidResponse(
-                r#"invalid type: map at line 0 column 0"#))
+                r#"invalid type: map, expected a string"#))
         );
     }
     

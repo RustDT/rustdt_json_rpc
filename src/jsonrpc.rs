@@ -24,7 +24,7 @@ https://github.com/RustDT/rustdt-json_rpc/blob/master/tests/example.rs
 #![allow(non_camel_case_types)]
 
 #[macro_use] extern crate log;
-extern crate serde_json;
+#[macro_use] extern crate serde_json;
 extern crate serde;
 
 extern crate rustdt_util as util;
@@ -275,7 +275,7 @@ impl ResponseCompletable {
         self, params: RequestParams, method_handler: METHOD
     ) 
     where 
-        PARAMS : serde::Deserialize, 
+        for<'de> PARAMS : serde::Deserialize<'de>, 
         RET : serde::Serialize, 
         RET_ERROR : serde::Serialize,
         METHOD : FnOnce(PARAMS, MethodCompletable<RET, RET_ERROR>),
@@ -288,7 +288,7 @@ impl ResponseCompletable {
         self, params: RequestParams, sync_method_handler: METHOD
     ) 
     where 
-        PARAMS : serde::Deserialize, 
+        for<'de> PARAMS : serde::Deserialize<'de>, 
         RET : serde::Serialize, 
         RET_ERROR : serde::Serialize ,
         METHOD : FnOnce(PARAMS) -> MethodResult<RET, RET_ERROR>,
@@ -303,7 +303,7 @@ impl ResponseCompletable {
         self, params: RequestParams, method_handler: METHOD
     ) 
     where 
-        PARAMS : serde::Deserialize, 
+        for<'de> PARAMS : serde::Deserialize<'de>, 
         METHOD : FnOnce(PARAMS),
     {
         let mc = MethodCompletable::<(), ()>::new(self);
@@ -318,7 +318,7 @@ impl ResponseCompletable {
         self, params: RequestParams, sync_method_handler: METHOD
     ) 
     where 
-        PARAMS : serde::Deserialize, 
+        for<'de> PARAMS : serde::Deserialize<'de>, 
         METHOD : FnOnce(PARAMS),
     {
         self.handle_notification_with(params, |params| {
@@ -359,7 +359,7 @@ impl<
         method_fn: METHOD
     )
     where 
-        PARAMS : serde::Deserialize, 
+        for<'de> PARAMS : serde::Deserialize<'de>, 
         RET : serde::Serialize, 
         RET_ERROR : serde::Serialize,
         METHOD : FnOnce(PARAMS, Self),
@@ -421,11 +421,14 @@ impl Endpoint {
     
     /// Send a (non-notification) request
     pub fn send_request<
+        RET,
+        RET_ERROR,
         PARAMS : serde::Serialize, 
-        RET: serde::Deserialize, 
-        RET_ERROR : serde::Deserialize, 
     >(&mut self, method_name: &str, params: PARAMS) 
         -> GResult<RequestFuture<RET, RET_ERROR>> 
+    where
+        for<'de> RET: serde::Deserialize<'de>, 
+        for<'de> RET_ERROR : serde::Deserialize<'de>, 
     {
         let (completable, future) = futures::oneshot::<ResponseResult>();
         let future : futures::Oneshot<ResponseResult> = future;
@@ -459,7 +462,7 @@ impl Endpoint {
     >(&self, id: Option<Id>, method_name: &str, params: PARAMS) 
         -> GResult<()> 
     {
-        let params_value = serde_json::to_value(&params);
+        let params_value = serde_json::to_value(&params)?;
         let params = jsonrpc_request::to_jsonrpc_params(params_value)?;
         
         let rpc_request = Request { id: id.clone(), method : method_name.into(), params : params };
@@ -593,12 +596,12 @@ mod tests_ {
         let request = Request::new(1, "sample_fn".to_string(), JsonObject::new());
         invoke_method(&mut request_handler, &request.method, request.params, 
             |result| 
-            check_request(result.unwrap(), ResponseResult::Error(error_JSON_RPC_InvalidParams(r#"missing field "x""#)))
+            check_request(result.unwrap(), ResponseResult::Error(error_JSON_RPC_InvalidParams(r#"missing field `x`"#)))
         );
         
         // test with valid params
         let params_value = match serde_json::to_value(&new_sample_params(10, 20)) {
-            Value::Object(object) => object, 
+            Ok(Value::Object(object)) => object, 
             _ => panic!("Not serialized into Object") 
         };
         let request = Request::new(1, "sample_fn".to_string(), params_value);
